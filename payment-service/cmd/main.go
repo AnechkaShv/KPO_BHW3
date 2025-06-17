@@ -65,14 +65,14 @@ func main() {
 	accountRepo := internal.NewAccountRepository(db)
 	inboxRepo := internal.NewInboxRepository(db)
 	outboxRepo := internal.NewOutboxRepository(db)
-	paymentService := internal.NewPaymentService(accountRepo, inboxRepo, outboxRepo)
+	paymentService := internal.NewPaymentService(db, accountRepo, inboxRepo, outboxRepo)
 	paymentHandler := internal.NewPaymentHandler(paymentService)
 
 	// Set up HTTP routes
 	http.HandleFunc("/payments/create-account", paymentHandler.CreateAccount)
 	http.HandleFunc("/payments/get-account", paymentHandler.GetAccount)
 	http.HandleFunc("/payments/deposit", paymentHandler.Deposit)
-	http.HandleFunc("/payments/process-payment", paymentHandler.ProcessPaymentTask)
+	http.HandleFunc("/payments/process-payment", paymentHandler.ProcessPayment)
 
 	// Start inbox processor
 	go processInboxMessages(db, paymentService)
@@ -113,7 +113,7 @@ func processInboxMessages(db *sql.DB, paymentService internal.PaymentService) {
 			}
 
 			// Process payment
-			success, err := paymentService.ProcessPaymentTask(context.Background(), task.OrderID, task.UserID, task.Amount)
+			success, err := paymentService.ProcessOrderPayment(context.Background(), task.OrderID, task.UserID, task.Amount)
 			if err != nil {
 				log.Printf("Failed to process payment task: %v", err)
 				continue
@@ -124,7 +124,7 @@ func processInboxMessages(db *sql.DB, paymentService internal.PaymentService) {
 				OrderID: task.OrderID,
 				UserID:  task.UserID,
 				Amount:  task.Amount,
-				Success: success,
+				Success: success.Success,
 			}
 
 			payload, err := json.Marshal(paymentEvent)

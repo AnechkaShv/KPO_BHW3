@@ -69,42 +69,35 @@ func (h *PaymentHandler) Deposit(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 }
 
-func (h *PaymentHandler) ProcessPaymentTask(w http.ResponseWriter, r *http.Request) {
-	var task struct {
+func (h *PaymentHandler) ProcessPayment(w http.ResponseWriter, r *http.Request) {
+	var req struct {
 		OrderID string  `json:"order_id"`
 		UserID  string  `json:"user_id"`
 		Amount  float64 `json:"amount"`
 	}
 
-	if err := json.NewDecoder(r.Body).Decode(&task); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "invalid request format", http.StatusBadRequest)
 		return
 	}
 
-	success, err := h.service.ProcessPaymentTask(r.Context(), task.OrderID, task.UserID, task.Amount)
+	// Получаем результат обработки платежа
+	paymentResult, err := h.service.ProcessOrderPayment(r.Context(), req.OrderID, req.UserID, req.Amount)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
-	// Create payment event in outbox
-	paymentEvent := PaymentEvent{
-		OrderID: task.OrderID,
-		UserID:  task.UserID,
-		Amount:  task.Amount,
-		Success: success,
+	// Формируем ответ
+	response := map[string]interface{}{
+		"success":  paymentResult.Success, // Используем поле Success из структуры
+		"message":  paymentResult.Message,
+		"order_id": paymentResult.OrderID,
+		"amount":   paymentResult.Amount,
 	}
 
-	payload, err := json.Marshal(paymentEvent)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
+	w.Header().Set("Content-Type", "application/json")
+	if err := json.NewEncoder(w).Encode(response); err != nil {
+		http.Error(w, "failed to encode response", http.StatusInternalServerError)
 	}
-
-	if err := h.service.CreateOutboxMessage(r.Context(), task.OrderID, string(payload)); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	w.WriteHeader(http.StatusOK)
 }
