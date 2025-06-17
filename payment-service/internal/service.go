@@ -3,6 +3,7 @@ package internal
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log"
@@ -19,17 +20,20 @@ type paymentService struct {
 	db          *sql.DB
 	accountRepo AccountRepository
 	inboxRepo   InboxRepository
+	queue       *RabbitMQPaymentQueue
 }
 
 func NewPaymentService(
 	db *sql.DB,
 	accountRepo AccountRepository,
 	inboxRepo InboxRepository,
+	queue *RabbitMQPaymentQueue,
 ) PaymentService {
 	return &paymentService{
 		db:          db,
 		accountRepo: accountRepo,
 		inboxRepo:   inboxRepo,
+		queue:       queue,
 	}
 }
 
@@ -90,10 +94,15 @@ func (s *paymentService) ProcessOrderPayment(ctx context.Context, orderID, userI
 
 	if err != nil {
 		if err == sql.ErrNoRows {
-			return &PaymentResult{
+			result := &PaymentResult{
+				OrderID: orderID,
 				Success: false,
 				Message: "account not found",
-			}, nil
+			}
+			if err := s.sendPaymentResponse(ctx, result); err != nil {
+				log.Printf("Failed to send payment response: %v", err)
+			}
+			return result, nil
 		}
 		return nil, fmt.Errorf("failed to get account: %w", err)
 	}
@@ -102,10 +111,15 @@ func (s *paymentService) ProcessOrderPayment(ctx context.Context, orderID, userI
 
 	// 2. Проверяем достаточность средств
 	if balance < amount {
-		return &PaymentResult{
+		result := &PaymentResult{
+			OrderID: orderID,
 			Success: false,
 			Message: "insufficient funds",
-		}, nil
+		}
+		if err := s.sendPaymentResponse(ctx, result); err != nil {
+			log.Printf("Failed to send payment response: %v", err)
+		}
+		return result, nil
 	}
 
 	// 3. Списание средств
@@ -123,8 +137,28 @@ func (s *paymentService) ProcessOrderPayment(ctx context.Context, orderID, userI
 
 	log.Printf("Payment successful. New balance: %.2f", balance-amount)
 
-	return &PaymentResult{
+	result := &PaymentResult{
+		OrderID: orderID,
 		Success: true,
 		Message: "payment processed successfully",
-	}, nil
+	}
+	if err := s.sendPaymentResponse(ctx, result); err != nil {
+		log.Printf("Failed to send payment response: %v", err)
+	}
+
+	return result, nil
+}
+
+func (s *paymentService) sendPaymentResponse(ctx context.Context, result *PaymentResult) error {
+	response := map[string]interface{}{
+		"order_id": result.OrderID,
+		"success":  result.Success,
+	}
+
+	responseBytes, err := json.Marshal(response)
+	if err != nil {
+		return fmt.Errorf("failed to marshal response: %w", err)
+	}
+
+	return s.queue.PublishPaymentRequest(ctx, responseBytes)
 }

@@ -9,7 +9,9 @@ import (
 	"time"
 
 	"github.com/AnechkaShv/KPO_BHW2/order-service/internal"
+	"github.com/gorilla/mux"
 	_ "github.com/lib/pq"
+	"github.com/rs/cors"
 )
 
 func main() {
@@ -79,18 +81,37 @@ func main() {
 	// Start payment updates consumer
 	go consumePaymentUpdates(context.Background(), rabbitMQ, orderService)
 
-	// HTTP routes
-	http.HandleFunc("/orders/create", orderHandler.CreateOrder)
-	http.HandleFunc("/orders/get", orderHandler.GetOrder)
-	http.HandleFunc("/orders/list", orderHandler.ListOrders)
+	// Create router with CORS middleware
+	r := mux.NewRouter()
 
+	// API routes
+	r.HandleFunc("/api/orders/create", orderHandler.CreateOrder).Methods("POST")
+	r.HandleFunc("/api/orders/get", orderHandler.GetOrder).Methods("GET")
+	r.HandleFunc("/api/orders/list", orderHandler.ListOrders).Methods("GET")
+	r.HandleFunc("/api/orders/process-payment", orderHandler.ProcessPaymentEvent).Methods("POST")
+
+	// Health check endpoint
+	r.HandleFunc("/api/health", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("OK"))
+	}).Methods("GET")
+
+	// Configure CORS
+	corsHandler := cors.New(cors.Options{
+		AllowedOrigins:   []string{"*"},
+		AllowedMethods:   []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
+		AllowedHeaders:   []string{"Content-Type", "Authorization"},
+		AllowCredentials: true,
+	})
+
+	// Start server
 	port := os.Getenv("PORT")
 	if port == "" {
 		port = "8080"
 	}
 
 	log.Printf("Order service is running on port %s", port)
-	log.Fatal(http.ListenAndServe(":"+port, nil))
+	log.Fatal(http.ListenAndServe(":"+port, corsHandler.Handler(r)))
 }
 
 func processOutboxMessages(ctx context.Context, db *sql.DB, queue *internal.RabbitMQPaymentQueue) {

@@ -14,6 +14,7 @@ func NewOrderHandler(service OrderService) *OrderHandler {
 }
 
 func (h *OrderHandler) CreateOrder(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
 	var req struct {
 		UserID      string  `json:"user_id"`
 		Amount      float64 `json:"amount"`

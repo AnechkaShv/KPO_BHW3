@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log"
 )
 
 type OrderService interface {
@@ -32,7 +31,6 @@ func NewOrderService(
 	}
 }
 
-// В Order Service (создание заказа):
 func (s *orderService) CreateOrder(ctx context.Context, userID string, amount float64, description string) (*Order, error) {
 	order := &Order{
 		UserID:      userID,
@@ -45,7 +43,6 @@ func (s *orderService) CreateOrder(ctx context.Context, userID string, amount fl
 		return nil, fmt.Errorf("failed to create order: %w", err)
 	}
 
-	// Важно: Проверьте, что этот payload содержит все нужные поля
 	paymentTask := map[string]interface{}{
 		"order_id":    order.ID,
 		"user_id":     userID,
@@ -58,10 +55,8 @@ func (s *orderService) CreateOrder(ctx context.Context, userID string, amount fl
 		return nil, fmt.Errorf("failed to marshal payment task: %w", err)
 	}
 
-	// Проверьте, что сообщение уходит в RabbitMQ
-	if err := s.paymentQueue.PublishPaymentRequest(ctx, payload); err != nil {
-		log.Printf("Failed to publish payment request: %v", err)
-		return nil, fmt.Errorf("failed to publish payment request: %w", err)
+	if err := s.outboxRepo.CreateOutboxMessage(ctx, order.ID, string(payload)); err != nil {
+		return nil, fmt.Errorf("failed to create outbox message: %w", err)
 	}
 
 	return order, nil

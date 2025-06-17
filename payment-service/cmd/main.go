@@ -3,14 +3,15 @@ package main
 import (
 	"context"
 	"database/sql"
-	"encoding/json"
 	"log"
 	"net/http"
 	"os"
 	"time"
 
 	"github.com/AnechkaShv/KPO_BHW2/payment-service/internal"
+	"github.com/gorilla/mux"
 	_ "github.com/lib/pq"
+	"github.com/rs/cors"
 )
 
 func main() {
@@ -67,12 +68,6 @@ func main() {
 	}
 	defer rabbitMQ.Close()
 
-	// Initialize services
-	accountRepo := internal.NewAccountRepository(db)
-	inboxRepo := internal.NewInboxRepository(db)
-	paymentService := internal.NewPaymentService(db, accountRepo, inboxRepo) // Исправлено количество параметров
-	paymentHandler := internal.NewPaymentHandler(paymentService)
-
 	// Setup RabbitMQ queues
 	paymentRequestQueue := internal.NewRabbitMQPaymentQueue(
 		rabbitMQ,
@@ -88,23 +83,47 @@ func main() {
 		"payment_responses",
 	)
 
+	// Initialize services
+	accountRepo := internal.NewAccountRepository(db)
+	inboxRepo := internal.NewInboxRepository(db)
+	paymentService := internal.NewPaymentService(db, accountRepo, inboxRepo, paymentResponseQueue)
+	paymentHandler := internal.NewPaymentHandler(paymentService)
+
+	// Create router with CORS middleware
+	r := mux.NewRouter()
+
+	// API routes
+	r.HandleFunc("/api/payments/create-account", paymentHandler.CreateAccount).Methods("POST")
+	r.HandleFunc("/api/payments/get-account", paymentHandler.GetAccount).Methods("GET")
+	r.HandleFunc("/api/payments/deposit", paymentHandler.Deposit).Methods("POST")
+	r.HandleFunc("/api/payments/process", paymentHandler.ProcessPayment).Methods("POST")
+
+	// Health check endpoint
+	r.HandleFunc("/api/health", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("OK"))
+	}).Methods("GET")
+
+	// Configure CORS
+	corsHandler := cors.New(cors.Options{
+		AllowedOrigins:   []string{"*"},
+		AllowedMethods:   []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
+		AllowedHeaders:   []string{"Content-Type", "Authorization"},
+		AllowCredentials: true,
+	})
+
 	// Start message processors
 	ctx := context.Background()
 	go processPaymentRequests(ctx, paymentRequestQueue, paymentService)
-	go processInboxMessages(ctx, inboxRepo, paymentService, paymentResponseQueue)
 
-	// HTTP routes
-	http.HandleFunc("/payments/create-account", paymentHandler.CreateAccount)
-	http.HandleFunc("/payments/get-account", paymentHandler.GetAccount)
-	http.HandleFunc("/payments/deposit", paymentHandler.Deposit)
-
+	// Start server
 	port := os.Getenv("PORT")
 	if port == "" {
 		port = "8081"
 	}
 
 	log.Printf("Payment service is running on port %s", port)
-	log.Fatal(http.ListenAndServe(":"+port, nil))
+	log.Fatal(http.ListenAndServe(":"+port, corsHandler.Handler(r)))
 }
 
 func processPaymentRequests(ctx context.Context, queue *internal.RabbitMQPaymentQueue, paymentService internal.PaymentService) {
@@ -125,62 +144,5 @@ func processPaymentRequests(ctx context.Context, queue *internal.RabbitMQPayment
 
 	if err != nil {
 		log.Fatalf("Failed to subscribe to payment requests: %v", err)
-	}
-}
-
-func processInboxMessages(ctx context.Context, inboxRepo internal.InboxRepository, paymentService internal.PaymentService, responseQueue *internal.RabbitMQPaymentQueue) {
-	ticker := time.NewTicker(10 * time.Second)
-	defer ticker.Stop()
-
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case <-ticker.C:
-			messages, err := inboxRepo.GetUnprocessedMessages(ctx)
-			if err != nil {
-				log.Printf("Failed to get unprocessed messages: %v", err)
-				continue
-			}
-
-			for _, msg := range messages {
-				var task struct {
-					OrderID string  `json:"order_id"`
-					UserID  string  `json:"user_id"`
-					Amount  float64 `json:"amount"`
-				}
-
-				if err := json.Unmarshal([]byte(msg.Payload), &task); err != nil {
-					log.Printf("Failed to unmarshal message: %v", err)
-					continue
-				}
-
-				result, err := paymentService.ProcessOrderPayment(ctx, task.OrderID, task.UserID, task.Amount)
-				if err != nil {
-					log.Printf("Failed to process payment: %v", err)
-					continue
-				}
-
-				response := map[string]interface{}{
-					"order_id": task.OrderID,
-					"success":  result.Success,
-				}
-
-				responseBytes, err := json.Marshal(response)
-				if err != nil {
-					log.Printf("Failed to marshal response: %v", err)
-					continue
-				}
-
-				if err := responseQueue.PublishPaymentRequest(ctx, responseBytes); err != nil {
-					log.Printf("Failed to publish response: %v", err)
-					continue
-				}
-
-				if err := inboxRepo.MarkMessageAsProcessed(ctx, msg.ID); err != nil {
-					log.Printf("Failed to mark message as processed: %v", err)
-				}
-			}
-		}
 	}
 }
