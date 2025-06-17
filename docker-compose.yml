@@ -1,0 +1,72 @@
+version: '3.8'
+
+services:
+  api-gateway:
+    build: ./api-gateway
+    ports:
+      - "8000:8000"
+    depends_on:
+      - order-service
+      - payment-service
+    networks:
+      - ecommerce_network
+
+  order-service:
+    build: ./order-service
+    ports:
+      - "8080:8080"
+    environment:
+      - PORT=8080
+    depends_on:
+      - orders_db
+    networks:
+      - ecommerce_network
+
+  orders_db:
+    image: postgres:13
+    environment:
+      - POSTGRES_USER=user
+      - POSTGRES_PASSWORD=password
+      - POSTGRES_DB=postgres
+    volumes:
+      - orders_data:/var/lib/postgresql/data
+    networks:
+      - ecommerce_network
+
+  payment-service:
+    build: ./payment-service
+    ports:
+      - "8081:8081"
+    environment:
+      - PORT=8081
+    depends_on:
+      - payments_db
+    networks:
+      - ecommerce_network
+
+  payments_db:
+    image: postgres:13
+    environment:
+      - POSTGRES_USER=user
+      - POSTGRES_PASSWORD=password
+      - POSTGRES_DB=postgres
+    volumes:
+      - payments_data:/var/lib/postgresql/data
+    networks:
+      - ecommerce_network
+
+  rabbitmq:
+    image: rabbitmq:3-management
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    networks:
+      - ecommerce_network
+
+volumes:
+  orders_data:
+  payments_data:
+
+networks:
+  ecommerce_network:
+    driver: bridge
