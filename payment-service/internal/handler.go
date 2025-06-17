@@ -81,16 +81,14 @@ func (h *PaymentHandler) ProcessPayment(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	// Получаем результат обработки платежа
 	paymentResult, err := h.service.ProcessOrderPayment(r.Context(), req.OrderID, req.UserID, req.Amount)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
-	// Формируем ответ
 	response := map[string]interface{}{
-		"success":  paymentResult.Success, // Используем поле Success из структуры
+		"success":  paymentResult.Success,
 		"message":  paymentResult.Message,
 		"order_id": paymentResult.OrderID,
 		"amount":   paymentResult.Amount,

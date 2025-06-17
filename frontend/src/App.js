@@ -1,37 +1,21 @@
-// frontend/src/App.js
-import React, { useState, useEffect } from 'react';
-import CreateOrderForm from './components/CreateOrderForm';
-import OrderList from './components/OrderList';
-import { getOrders } from './api';
-import './App.css';
+import React, { useState } from 'react';
+import Navbar from './components/Navbar';
+import Account from './components/Account';
+import Order from './components/Order';
+import Payment from './components/Payment';
+import './styles.css';
 
 function App() {
-  const [orders, setOrders] = useState([]);
-  const [userId] = useState('test_user'); // Можно генерировать динамически
-
-  const fetchOrders = async () => {
-    try {
-      const ordersData = await getOrders(userId);
-      setOrders(ordersData);
-    } catch (error) {
-      console.error('Failed to fetch orders:', error);
-    }
-  };
-
-  useEffect(() => {
-    fetchOrders();
-  }, [userId]);
-
-  const handleOrderCreated = (newOrder) => {
-    setOrders([...orders, newOrder]);
-  };
+  const [activeTab, setActiveTab] = useState('account');
 
   return (
-    <div className="app">
-      <h1>E-Commerce System</h1>
-      <div className="container">
-        <CreateOrderForm onOrderCreated={handleOrderCreated} />
-        <OrderList orders={orders} />
+    <div className="app-container">
+      <Navbar activeTab={activeTab} setActiveTab={setActiveTab} />
+      
+      <div className="content">
+        {activeTab === 'account' && <Account />}
+        {activeTab === 'order' && <Order />}
+        {activeTab === 'payment' && <Payment />}
       </div>
     </div>
   );
