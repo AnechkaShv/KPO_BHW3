@@ -99,31 +99,27 @@ func NewRabbitMQPaymentQueue(
 }
 
 func (q *RabbitMQPaymentQueue) PublishPaymentRequest(ctx context.Context, message []byte) error {
-	log.Printf("Publishing message to exchange '%s' with routing key '%s'",
-		q.exchangeName, q.routingKey)
-	log.Printf("Message content: %s", string(message))
-
 	err := q.rabbitMQ.channel.Publish(
 		q.exchangeName,
 		q.routingKey,
-		false,
-		false,
+		false, // mandatory
+		false, // immediate
 		amqp.Publishing{
 			ContentType: "application/json",
 			Body:        message,
-		})
-
+		},
+	)
 	if err != nil {
-		log.Printf("Publish failed with error: %v", err)
 		return fmt.Errorf("failed to publish message: %w", err)
 	}
-
-	log.Println("Message successfully published")
 	return nil
 }
 
-func (q *RabbitMQPaymentQueue) SubscribeToPaymentUpdates(ctx context.Context, callback func(orderID string, success bool)) error {
-	// 1. Объявляем очередь
+func (q *RabbitMQPaymentQueue) SubscribeToPaymentUpdates(
+	ctx context.Context,
+	callback func(orderID, userID string, amount float64),
+) error {
+	// Объявление и привязка очереди
 	_, err := q.rabbitMQ.channel.QueueDeclare(
 		q.queueName,
 		true,  // durable
@@ -136,19 +132,18 @@ func (q *RabbitMQPaymentQueue) SubscribeToPaymentUpdates(ctx context.Context, ca
 		return fmt.Errorf("failed to declare queue: %w", err)
 	}
 
-	// 2. Привязываем очередь к exchange
 	err = q.rabbitMQ.channel.QueueBind(
-		q.queueName,    // имя очереди
-		q.routingKey,   // routing key
-		q.exchangeName, // exchange
-		false,          // no-wait
-		nil,            // args
+		q.queueName,
+		q.routingKey,
+		q.exchangeName,
+		false,
+		nil,
 	)
 	if err != nil {
 		return fmt.Errorf("failed to bind queue: %w", err)
 	}
 
-	// 3. Начинаем потреблять сообщения
+	// Потребление сообщений
 	msgs, err := q.rabbitMQ.channel.Consume(
 		q.queueName,
 		"",    // consumer
@@ -156,10 +151,10 @@ func (q *RabbitMQPaymentQueue) SubscribeToPaymentUpdates(ctx context.Context, ca
 		false, // exclusive
 		false, // no-local
 		false, // no-wait
-		nil,   // args
+		nil,   // arguments
 	)
 	if err != nil {
-		return fmt.Errorf("failed to consume: %w", err)
+		return fmt.Errorf("failed to consume messages: %w", err)
 	}
 
 	go func() {
@@ -172,17 +167,18 @@ func (q *RabbitMQPaymentQueue) SubscribeToPaymentUpdates(ctx context.Context, ca
 					return
 				}
 
-				var result struct {
-					OrderID string `json:"order_id"`
-					Success bool   `json:"success"`
+				var request struct {
+					OrderID string  `json:"order_id"`
+					UserID  string  `json:"user_id"`
+					Amount  float64 `json:"amount"`
 				}
 
-				if err := json.Unmarshal(msg.Body, &result); err != nil {
-					log.Printf("Failed to unmarshal message: %v", err)
+				if err := json.Unmarshal(msg.Body, &request); err != nil {
+					log.Printf("Failed to unmarshal payment request: %v", err)
 					continue
 				}
 
-				callback(result.OrderID, result.Success)
+				callback(request.OrderID, request.UserID, request.Amount)
 			}
 		}
 	}()

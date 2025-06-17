@@ -48,8 +48,23 @@ func (h *OrderHandler) GetOrder(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Добавляем поле status в ответ
+	response := struct {
+		ID          string  `json:"id"`
+		UserID      string  `json:"user_id"`
+		Amount      float64 `json:"amount"`
+		Description string  `json:"description"`
+		Status      string  `json:"status"`
+	}{
+		ID:          order.ID,
+		UserID:      order.UserID,
+		Amount:      order.Amount,
+		Description: order.Description,
+		Status:      string(order.Status),
+	}
+
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(order)
+	json.NewEncoder(w).Encode(response)
 }
 
 func (h *OrderHandler) ListOrders(w http.ResponseWriter, r *http.Request) {

@@ -28,8 +28,10 @@ services:
       - "8080:8080"
     environment:
       - PORT=8080
+      - RABBITMQ_URL=amqp://guest:guest@rabbitmq-host:5672/
     depends_on:
       - orders_db
+      - rabbitmq
     networks:
       - ecommerce_network
 
@@ -43,6 +45,8 @@ services:
       - orders_data:/var/lib/postgresql/data
     networks:
       - ecommerce_network
+    depends_on:
+      - rabbitmq
 
   payment-service:
     build: ./payment-service
@@ -50,8 +54,10 @@ services:
       - "8081:8081"
     environment:
       - PORT=8081
+      - RABBITMQ_URL=amqp://guest:guest@rabbitmq-host:5672/
     depends_on:
       - payments_db
+      - rabbitmq
     networks:
       - ecommerce_network
 
@@ -67,17 +73,32 @@ services:
       - ecommerce_network
 
   rabbitmq:
-    image: rabbitmq:3-management
+    image: rabbitmq:3-management-alpine
+    hostname: rabbitmq
+    container_name: rabbitmq  # Явное имя контейнера
     ports:
       - "5672:5672"
       - "15672:15672"
+    environment:
+      RABBITMQ_DEFAULT_USER: guest
+      RABBITMQ_DEFAULT_PASS: guest
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 5s
+      timeout: 10s
+      retries: 30
     networks:
-      - ecommerce_network
+      ecommerce_network:
+        aliases:
+          - rabbitmq-host
 
 volumes:
   orders_data:
   payments_data:
+  rabbitmq_data:
 
 networks:
   ecommerce_network:
+    name: ecommerce_network
     driver: bridge
+    attachable: true

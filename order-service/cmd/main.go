@@ -3,24 +3,24 @@ package main
 import (
 	"context"
 	"database/sql"
-	"fmt"
 	"log"
 	"net/http"
 	"os"
 	"time"
 
 	"github.com/AnechkaShv/KPO_BHW2/order-service/internal"
-
 	_ "github.com/lib/pq"
 )
 
 func main() {
+	// Database setup
 	db, err := sql.Open("postgres", "postgres://user:password@orders_db/postgres?sslmode=disable")
 	if err != nil {
 		log.Fatal(err)
 	}
 	defer db.Close()
 
+	// Wait for database
 	for i := 0; i < 10; i++ {
 		err = db.Ping()
 		if err == nil {
@@ -33,7 +33,7 @@ func main() {
 		log.Fatal("Failed to connect to database:", err)
 	}
 
-	// Create tables if not exists
+	// Create tables
 	if _, err := db.Exec(`
 		CREATE TABLE IF NOT EXISTS orders (
 			id TEXT PRIMARY KEY,
@@ -53,20 +53,36 @@ func main() {
 		log.Fatal("Failed to create tables:", err)
 	}
 
-	// Initialize repositories and services
+	// RabbitMQ setup
+	rabbitMQ, err := internal.NewRabbitMQ("amqp://guest:guest@rabbitmq:5672/")
+	if err != nil {
+		log.Fatal("Failed to connect to RabbitMQ:", err)
+	}
+	defer rabbitMQ.Close()
+
+	paymentQueue := internal.NewRabbitMQPaymentQueue(
+		rabbitMQ,
+		"payments",
+		"payment.request",
+		"payment_requests",
+	)
+
+	// Initialize services
 	orderRepo := internal.NewOrderRepository(db)
 	outboxRepo := internal.NewOutboxRepository(db)
-	orderService := internal.NewOrderService(orderRepo, outboxRepo)
+	orderService := internal.NewOrderService(orderRepo, outboxRepo, paymentQueue)
 	orderHandler := internal.NewOrderHandler(orderService)
 
-	// Set up HTTP routes
+	// Start outbox processor
+	go processOutboxMessages(context.Background(), db, paymentQueue)
+
+	// Start payment updates consumer
+	go consumePaymentUpdates(context.Background(), rabbitMQ, orderService)
+
+	// HTTP routes
 	http.HandleFunc("/orders/create", orderHandler.CreateOrder)
 	http.HandleFunc("/orders/get", orderHandler.GetOrder)
 	http.HandleFunc("/orders/list", orderHandler.ListOrders)
-	http.HandleFunc("/orders/process-payment", orderHandler.ProcessPaymentEvent)
-
-	// Start outbox processor
-	go processOutboxMessages(db, orderService)
 
 	port := os.Getenv("PORT")
 	if port == "" {
@@ -74,34 +90,54 @@ func main() {
 	}
 
 	log.Printf("Order service is running on port %s", port)
-	log.Fatal(http.ListenAndServe(fmt.Sprintf(":%s", port), nil))
+	log.Fatal(http.ListenAndServe(":"+port, nil))
 }
 
-func processOutboxMessages(db *sql.DB, orderService internal.OrderService) {
+func processOutboxMessages(ctx context.Context, db *sql.DB, queue *internal.RabbitMQPaymentQueue) {
 	outboxRepo := internal.NewOutboxRepository(db)
+	ticker := time.NewTicker(10 * time.Second)
+	defer ticker.Stop()
 
 	for {
-		// Get unprocessed messages
-		messages, err := outboxRepo.GetUnprocessedMessages(context.Background())
-		if err != nil {
-			log.Printf("Failed to get unprocessed messages: %v", err)
-			time.Sleep(5 * time.Second)
-			continue
-		}
-
-		// Process each message
-		for _, msg := range messages {
-			// In a real implementation, we would send this to a message queue
-			// For simplicity, we'll just log it here
-			log.Printf("Processing outbox message: %s", msg.Payload)
-
-			// Mark as processed
-			if err := outboxRepo.MarkMessageAsProcessed(context.Background(), msg.ID); err != nil {
-				log.Printf("Failed to mark message as processed: %v", err)
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			messages, err := outboxRepo.GetUnprocessedMessages(ctx)
+			if err != nil {
+				log.Printf("Failed to get unprocessed messages: %v", err)
 				continue
 			}
-		}
 
-		time.Sleep(10 * time.Second)
+			for _, msg := range messages {
+				if err := queue.PublishPaymentRequest(ctx, []byte(msg.Payload)); err != nil {
+					log.Printf("Failed to publish message: %v", err)
+					continue
+				}
+
+				if err := outboxRepo.MarkMessageAsProcessed(ctx, msg.ID); err != nil {
+					log.Printf("Failed to mark message as processed: %v", err)
+				}
+			}
+		}
+	}
+}
+
+func consumePaymentUpdates(ctx context.Context, rabbitMQ *internal.RabbitMQ, orderService internal.OrderService) {
+	queue := internal.NewRabbitMQPaymentQueue(
+		rabbitMQ,
+		"payments",
+		"payment.response",
+		"payment_responses",
+	)
+
+	err := queue.SubscribeToPaymentUpdates(ctx, func(orderID string, success bool) {
+		if err := orderService.ProcessPaymentEvent(context.Background(), orderID, success); err != nil {
+			log.Printf("Failed to process payment event: %v", err)
+		}
+	})
+
+	if err != nil {
+		log.Fatal("Failed to subscribe to payment updates:", err)
 	}
 }
