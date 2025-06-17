@@ -8,7 +8,6 @@ const handleResponse = async (response) => {
   return response.json();
 };
 
-// Создание аккаунта
 export const createAccount = async (userId) => {
   const response = await fetch(`${API_BASE_URL}/api/payments/create-account`, {
     method: 'POST',
@@ -20,13 +19,11 @@ export const createAccount = async (userId) => {
   return handleResponse(response);
 };
 
-// Получение информации об аккаунте
 export const getAccount = async (userId) => {
   const response = await fetch(`${API_BASE_URL}/api/payments/get-account?user_id=${userId}`);
   return handleResponse(response);
 };
 
-// Пополнение счета
 export const deposit = async (userId, amount) => {
   const response = await fetch(`${API_BASE_URL}/api/payments/deposit`, {
     method: 'POST',
@@ -38,7 +35,6 @@ export const deposit = async (userId, amount) => {
   return handleResponse(response);
 };
 
-// Обработка платежа
 export const processPayment = async (orderId, userId, amount) => {
   const response = await fetch(`${API_BASE_URL}/api/payments/process`, {
     method: 'POST',

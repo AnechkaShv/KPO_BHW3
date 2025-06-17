@@ -49,7 +49,6 @@ func (h *OrderHandler) GetOrder(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Добавляем поле status в ответ
 	response := struct {
 		ID          string  `json:"id"`
 		UserID      string  `json:"user_id"`

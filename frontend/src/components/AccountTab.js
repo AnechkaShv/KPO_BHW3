@@ -61,7 +61,7 @@ const AccountTab = () => {
       setError(null);
       await deposit(userId, parseFloat(amount));
       setSuccess('Deposit successful');
-      await handleGetAccount(); // Refresh account data
+      await handleGetAccount(); 
       setAmount('');
     } catch (err) {
       setError(err.message);

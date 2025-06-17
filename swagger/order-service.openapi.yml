@@ -1,0 +1,144 @@
+openapi: 3.0.0
+info:
+  title: Order Service API
+  version: 1.0.0
+  description: |
+    Микросервис для управления заказами.
+    Позволяет создавать, просматривать и обновлять статусы заказов.
+servers:
+  - url: http://localhost:8080/api
+    description: Локальный сервер разработки
+  - url: https://api.example.com/order-service/api
+    description: Production сервер
+
+tags:
+  - name: Orders
+    description: Операции с заказами
+
+paths:
+  /orders/create:
+    post:
+      tags: [Orders]
+      summary: Создать новый заказ
+      description: Создает новый заказ и инициирует процесс оплаты
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateOrderRequest'
+      responses:
+        '201':
+          description: Заказ успешно создан
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Order'
+        '400':
+          description: Неверный формат запроса
+        '500':
+          description: Внутренняя ошибка сервера
+
+  /orders/get:
+    get:
+      tags: [Orders]
+      summary: Получить заказ по ID
+      description: Возвращает информацию о конкретном заказе
+      parameters:
+        - in: query
+          name: id
+          required: true
+          schema:
+            type: string
+          description: ID заказа
+      responses:
+        '200':
+          description: Информация о заказе
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Order'
+        '404':
+          description: Заказ не найден
+        '500':
+          description: Внутренняя ошибка сервера
+
+  /orders/list:
+    get:
+      tags: [Orders]
+      summary: Список заказов пользователя
+      description: Возвращает все заказы для указанного пользователя
+      parameters:
+        - in: query
+          name: user_id
+          required: true
+          schema:
+            type: string
+          description: ID пользователя
+      responses:
+        '200':
+          description: Список заказов
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Order'
+        '500':
+          description: Внутренняя ошибка сервера
+
+components:
+  schemas:
+    CreateOrderRequest:
+      type: object
+      required:
+        - user_id
+        - amount
+        - description
+      properties:
+        user_id:
+          type: string
+          example: "user123"
+          description: ID пользователя
+        amount:
+          type: number
+          format: float
+          example: 100.50
+          description: Сумма заказа
+        description:
+          type: string
+          example: "Покупка товаров"
+          description: Описание заказа
+
+    Order:
+      type: object
+      properties:
+        id:
+          type: string
+          example: "order-123"
+          description: Уникальный ID заказа
+        user_id:
+          type: string
+          example: "user123"
+        amount:
+          type: number
+          format: float
+          example: 100.50
+        description:
+          type: string
+          example: "Покупка товаров"
+        status:
+          type: string
+          enum: [NEW, PAID, CANCELLED]
+          example: "NEW"
+          description: Статус заказа
+
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+          example: "Invalid request format"
+        details:
+          type: string
+          example: "Field 'amount' must be a number"

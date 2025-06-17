@@ -15,14 +15,12 @@ import (
 )
 
 func main() {
-	// Database setup
 	db, err := sql.Open("postgres", "postgres://user:password@payments_db/postgres?sslmode=disable")
 	if err != nil {
 		log.Fatal(err)
 	}
 	defer db.Close()
 
-	// Wait for database
 	for i := 0; i < 10; i++ {
 		err = db.Ping()
 		if err == nil {
@@ -35,7 +33,6 @@ func main() {
 		log.Fatal("Failed to connect to database:", err)
 	}
 
-	// Create tables
 	if _, err := db.Exec(`
 		CREATE TABLE IF NOT EXISTS accounts (
 			id TEXT PRIMARY KEY,
@@ -53,7 +50,6 @@ func main() {
 		log.Fatal("Failed to create tables:", err)
 	}
 
-	// RabbitMQ setup with retries
 	var rabbitMQ *internal.RabbitMQ
 	for i := 0; i < 5; i++ {
 		rabbitMQ, err = internal.NewRabbitMQ("amqp://guest:guest@rabbitmq:5672/")
@@ -68,7 +64,6 @@ func main() {
 	}
 	defer rabbitMQ.Close()
 
-	// Setup RabbitMQ queues
 	paymentRequestQueue := internal.NewRabbitMQPaymentQueue(
 		rabbitMQ,
 		"payments",
@@ -83,28 +78,23 @@ func main() {
 		"payment_responses",
 	)
 
-	// Initialize services
 	accountRepo := internal.NewAccountRepository(db)
 	inboxRepo := internal.NewInboxRepository(db)
 	paymentService := internal.NewPaymentService(db, accountRepo, inboxRepo, paymentResponseQueue)
 	paymentHandler := internal.NewPaymentHandler(paymentService)
 
-	// Create router with CORS middleware
 	r := mux.NewRouter()
 
-	// API routes
 	r.HandleFunc("/api/payments/create-account", paymentHandler.CreateAccount).Methods("POST")
 	r.HandleFunc("/api/payments/get-account", paymentHandler.GetAccount).Methods("GET")
 	r.HandleFunc("/api/payments/deposit", paymentHandler.Deposit).Methods("POST")
 	r.HandleFunc("/api/payments/process", paymentHandler.ProcessPayment).Methods("POST")
 
-	// Health check endpoint
 	r.HandleFunc("/api/health", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		w.Write([]byte("OK"))
 	}).Methods("GET")
 
-	// Configure CORS
 	corsHandler := cors.New(cors.Options{
 		AllowedOrigins:   []string{"*"},
 		AllowedMethods:   []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
@@ -112,11 +102,9 @@ func main() {
 		AllowCredentials: true,
 	})
 
-	// Start message processors
 	ctx := context.Background()
 	go processPaymentRequests(ctx, paymentRequestQueue, paymentService)
 
-	// Start server
 	port := os.Getenv("PORT")
 	if port == "" {
 		port = "8081"
@@ -132,7 +120,6 @@ func processPaymentRequests(ctx context.Context, queue *internal.RabbitMQPayment
 	err := queue.SubscribeToPaymentUpdates(ctx, func(orderID, userID string, amount float64) {
 		log.Printf("Processing payment request: OrderID=%s, UserID=%s, Amount=%.2f", orderID, userID, amount)
 
-		// Process payment
 		result, err := paymentService.ProcessOrderPayment(ctx, orderID, userID, amount)
 		if err != nil {
 			log.Printf("Payment processing failed: %v", err)

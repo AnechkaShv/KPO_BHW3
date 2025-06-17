@@ -23,21 +23,18 @@ func enableCORS(next http.HandlerFunc) http.HandlerFunc {
 }
 
 func main() {
-	// Order Service proxy
 	ordersURL, err := url.Parse("http://order-service:8080")
 	if err != nil {
 		log.Fatal("Failed to parse Order Service URL:", err)
 	}
 	ordersProxy := httputil.NewSingleHostReverseProxy(ordersURL)
 
-	// Payments Service proxy
 	paymentsURL, err := url.Parse("http://payment-service:8081")
 	if err != nil {
 		log.Fatal("Failed to parse Payments Service URL:", err)
 	}
 	paymentsProxy := httputil.NewSingleHostReverseProxy(paymentsURL)
 
-	// Routes
 	http.HandleFunc("/orders/", enableCORS(func(w http.ResponseWriter, r *http.Request) {
 		log.Printf("Routing order request: %s %s", r.Method, r.URL.Path)
 		ordersProxy.ServeHTTP(w, r)

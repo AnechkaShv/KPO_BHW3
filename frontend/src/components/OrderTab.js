@@ -27,7 +27,6 @@ const OrderTab = () => {
       const order = await createOrder(userId, amount, description);
       setSuccess(`Order created with ID: ${order.id}`);
       
-      // Сброс формы
       setUserId('');
       setAmount('');
       setDescription('');

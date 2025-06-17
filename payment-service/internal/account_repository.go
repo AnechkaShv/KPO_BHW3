@@ -25,7 +25,7 @@ func NewAccountRepository(db *sql.DB) AccountRepository {
 }
 
 func (r *accountRepository) CreateAccount(ctx context.Context, userID string) (*Account, error) {
-	accountID := uuid.New().String() // Генерируем UUID
+	accountID := uuid.New().String()
 	var account Account
 	err := r.db.QueryRowContext(ctx,
 		"INSERT INTO accounts (id, user_id, balance) VALUES ($1, $2, $3) RETURNING id, user_id, balance",

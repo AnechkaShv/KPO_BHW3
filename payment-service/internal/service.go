@@ -85,7 +85,6 @@ func (s *paymentService) ProcessOrderPayment(ctx context.Context, orderID, userI
 	}
 	defer tx.Rollback()
 
-	// 1. Проверяем существование аккаунта
 	var accountID string
 	var balance float64
 	err = tx.QueryRowContext(ctx,
@@ -109,7 +108,6 @@ func (s *paymentService) ProcessOrderPayment(ctx context.Context, orderID, userI
 
 	log.Printf("Current balance: %.2f, Payment amount: %.2f", balance, amount)
 
-	// 2. Проверяем достаточность средств
 	if balance < amount {
 		result := &PaymentResult{
 			OrderID: orderID,
@@ -122,7 +120,6 @@ func (s *paymentService) ProcessOrderPayment(ctx context.Context, orderID, userI
 		return result, nil
 	}
 
-	// 3. Списание средств
 	_, err = tx.ExecContext(ctx,
 		"UPDATE accounts SET balance = balance - $1 WHERE id = $2",
 		amount, accountID)
@@ -130,7 +127,6 @@ func (s *paymentService) ProcessOrderPayment(ctx context.Context, orderID, userI
 		return nil, fmt.Errorf("failed to update balance: %w", err)
 	}
 
-	// 4. Фиксируем транзакцию
 	if err := tx.Commit(); err != nil {
 		return nil, fmt.Errorf("failed to commit transaction: %w", err)
 	}

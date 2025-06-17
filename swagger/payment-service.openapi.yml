@@ -1,0 +1,210 @@
+openapi: 3.0.0
+info:
+  title: Payment Service API
+  version: 1.0.0
+  description: |
+    Микросервис для управления платежами и счетами пользователей.
+    Обрабатывает платежи, управляет балансами и аккаунтами.
+servers:
+  - url: http://localhost:8081/api
+    description: Локальный сервер разработки
+  - url: https://api.example.com/payment-service/api
+    description: Production сервер
+
+tags:
+  - name: Accounts
+    description: Управление счетами пользователей
+  - name: Payments
+    description: Операции с платежами
+
+paths:
+  /payments/create-account:
+    post:
+      tags: [Accounts]
+      summary: Создать новый счет
+      description: Создает новый счет для пользователя
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateAccountRequest'
+      responses:
+        '201':
+          description: Счет успешно создан
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Account'
+        '400':
+          description: Неверный запрос
+        '409':
+          description: Счет уже существует
+        '500':
+          description: Внутренняя ошибка сервера
+
+  /payments/get-account:
+    get:
+      tags: [Accounts]
+      summary: Получить информацию о счете
+      description: Возвращает информацию о счете пользователя
+      parameters:
+        - in: query
+          name: user_id
+          required: true
+          schema:
+            type: string
+          description: ID пользователя
+      responses:
+        '200':
+          description: Информация о счете
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Account'
+        '404':
+          description: Счет не найден
+        '500':
+          description: Внутренняя ошибка сервера
+
+  /payments/deposit:
+    post:
+      tags: [Accounts]
+      summary: Пополнить счет
+      description: Увеличивает баланс счета пользователя
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DepositRequest'
+      responses:
+        '200':
+          description: Баланс успешно обновлен
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Account'
+        '400':
+          description: Неверный запрос
+        '404':
+          description: Счет не найден
+        '500':
+          description: Внутренняя ошибка сервера
+
+  /payments/process:
+    post:
+      tags: [Payments]
+      summary: Обработать платеж
+      description: Выполняет списание средств со счета пользователя
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ProcessPaymentRequest'
+      responses:
+        '200':
+          description: Результат обработки платежа
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaymentResult'
+        '400':
+          description: Неверный запрос
+        '404':
+          description: Счет не найден
+        '500':
+          description: Внутренняя ошибка сервера
+
+components:
+  schemas:
+    CreateAccountRequest:
+      type: object
+      required:
+        - user_id
+      properties:
+        user_id:
+          type: string
+          example: "user123"
+          description: ID пользователя
+
+    DepositRequest:
+      type: object
+      required:
+        - user_id
+        - amount
+      properties:
+        user_id:
+          type: string
+          example: "user123"
+        amount:
+          type: number
+          format: float
+          example: 500.00
+          description: Сумма пополнения (должна быть положительной)
+
+    ProcessPaymentRequest:
+      type: object
+      required:
+        - order_id
+        - user_id
+        - amount
+      properties:
+        order_id:
+          type: string
+          example: "order-123"
+          description: ID связанного заказа
+        user_id:
+          type: string
+          example: "user123"
+        amount:
+          type: number
+          format: float
+          example: 100.50
+          description: Сумма платежа
+
+    Account:
+      type: object
+      properties:
+        id:
+          type: string
+          example: "acc-123"
+          description: Уникальный ID счета
+        user_id:
+          type: string
+          example: "user123"
+        balance:
+          type: number
+          format: float
+          example: 1500.00
+          description: Текущий баланс
+
+    PaymentResult:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: true
+          description: Успешность операции
+        message:
+          type: string
+          example: "Payment processed successfully"
+        order_id:
+          type: string
+          example: "order-123"
+        amount:
+          type: number
+          format: float
+          example: 100.50
+          description: Сумма платежа
+
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+          example: "Insufficient funds"
+        details:
+          type: string
+          example: "Current balance 50.00, required 100.50"

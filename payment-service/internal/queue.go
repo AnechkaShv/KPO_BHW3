@@ -44,14 +44,13 @@ func NewRabbitMQ(url string) (*RabbitMQ, error) {
 		return nil, fmt.Errorf("failed to open channel: %w", err)
 	}
 
-	// Объявляем exchange и очередь
 	err = ch.ExchangeDeclare(
 		"payments",
 		"direct",
-		true,  // durable
-		false, // auto-delete
-		false, // internal
-		false, // no-wait
+		true,
+		false,
+		false,
+		false,
 		nil,
 	)
 	if err != nil {
@@ -102,8 +101,8 @@ func (q *RabbitMQPaymentQueue) PublishPaymentRequest(ctx context.Context, messag
 	err := q.rabbitMQ.channel.Publish(
 		q.exchangeName,
 		q.routingKey,
-		false, // mandatory
-		false, // immediate
+		false,
+		false,
 		amqp.Publishing{
 			ContentType: "application/json",
 			Body:        message,
@@ -119,14 +118,13 @@ func (q *RabbitMQPaymentQueue) SubscribeToPaymentUpdates(
 	ctx context.Context,
 	callback func(orderID, userID string, amount float64),
 ) error {
-	// Объявление и привязка очереди
 	_, err := q.rabbitMQ.channel.QueueDeclare(
 		q.queueName,
-		true,  // durable
-		false, // delete when unused
-		false, // exclusive
-		false, // no-wait
-		nil,   // arguments
+		true,
+		false,
+		false,
+		false,
+		nil,
 	)
 	if err != nil {
 		return fmt.Errorf("failed to declare queue: %w", err)
@@ -143,15 +141,14 @@ func (q *RabbitMQPaymentQueue) SubscribeToPaymentUpdates(
 		return fmt.Errorf("failed to bind queue: %w", err)
 	}
 
-	// Потребление сообщений
 	msgs, err := q.rabbitMQ.channel.Consume(
 		q.queueName,
-		"",    // consumer
-		true,  // auto-ack
-		false, // exclusive
-		false, // no-local
-		false, // no-wait
-		nil,   // arguments
+		"",
+		true,
+		false,
+		false,
+		false,
+		nil,
 	)
 	if err != nil {
 		return fmt.Errorf("failed to consume messages: %w", err)

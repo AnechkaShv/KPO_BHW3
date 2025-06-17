@@ -1,10 +1,7 @@
-// frontend/src/api.js
 const getApiBase = () => {
-    // Для разработки вне Docker
     if (window.location.hostname === 'localhost') {
       return 'http://localhost:8000';
     }
-    // Для продакшена в Docker
     return 'http://api-gateway:8000';
   };
   

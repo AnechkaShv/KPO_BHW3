@@ -15,14 +15,12 @@ import (
 )
 
 func main() {
-	// Database setup
 	db, err := sql.Open("postgres", "postgres://user:password@orders_db/postgres?sslmode=disable")
 	if err != nil {
 		log.Fatal(err)
 	}
 	defer db.Close()
 
-	// Wait for database
 	for i := 0; i < 10; i++ {
 		err = db.Ping()
 		if err == nil {
@@ -35,7 +33,6 @@ func main() {
 		log.Fatal("Failed to connect to database:", err)
 	}
 
-	// Create tables
 	if _, err := db.Exec(`
 		CREATE TABLE IF NOT EXISTS orders (
 			id TEXT PRIMARY KEY,
@@ -55,7 +52,6 @@ func main() {
 		log.Fatal("Failed to create tables:", err)
 	}
 
-	// RabbitMQ setup
 	rabbitMQ, err := internal.NewRabbitMQ("amqp://guest:guest@rabbitmq:5672/")
 	if err != nil {
 		log.Fatal("Failed to connect to RabbitMQ:", err)
@@ -69,34 +65,27 @@ func main() {
 		"payment_requests",
 	)
 
-	// Initialize services
 	orderRepo := internal.NewOrderRepository(db)
 	outboxRepo := internal.NewOutboxRepository(db)
 	orderService := internal.NewOrderService(orderRepo, outboxRepo, paymentQueue)
 	orderHandler := internal.NewOrderHandler(orderService)
 
-	// Start outbox processor
 	go processOutboxMessages(context.Background(), db, paymentQueue)
 
-	// Start payment updates consumer
 	go consumePaymentUpdates(context.Background(), rabbitMQ, orderService)
 
-	// Create router with CORS middleware
 	r := mux.NewRouter()
 
-	// API routes
 	r.HandleFunc("/api/orders/create", orderHandler.CreateOrder).Methods("POST")
 	r.HandleFunc("/api/orders/get", orderHandler.GetOrder).Methods("GET")
 	r.HandleFunc("/api/orders/list", orderHandler.ListOrders).Methods("GET")
 	r.HandleFunc("/api/orders/process-payment", orderHandler.ProcessPaymentEvent).Methods("POST")
 
-	// Health check endpoint
 	r.HandleFunc("/api/health", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		w.Write([]byte("OK"))
 	}).Methods("GET")
 
-	// Configure CORS
 	corsHandler := cors.New(cors.Options{
 		AllowedOrigins:   []string{"*"},
 		AllowedMethods:   []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
@@ -104,7 +93,6 @@ func main() {
 		AllowCredentials: true,
 	})
 
-	// Start server
 	port := os.Getenv("PORT")
 	if port == "" {
 		port = "8080"

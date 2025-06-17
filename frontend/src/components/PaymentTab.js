@@ -172,4 +172,4 @@ const PaymentTab = () => {
   );
 };
 
-export default PaymentTab; // Добавлен default export
+export default PaymentTab; 
